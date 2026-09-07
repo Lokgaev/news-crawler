@@ -21,7 +21,9 @@ type Article struct {
 
 	ImgURL *string `json:"img_url"`
 
-	URL string `json:"url"`
+	URLTM *string `json:"url_tm"`
+	URLRU *string `json:"url_ru"`
+	URLEN *string `json:"url_en"`
 
 	SourceName string `json:"source_name"`
 

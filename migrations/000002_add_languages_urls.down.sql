@@ -1,0 +1,7 @@
+ALTER TABLE articles
+DROP COLUMN url_tm,
+DROP COLUMN url_ru,
+DROP COLUMN url_en;
+
+ALTER TABLE articles
+ADD COLUMN url TEXT;

@@ -16,6 +16,7 @@ type Config struct {
 	DBUser     string
 	DBPassword string
 	DBName     string
+	DBSSLMode  string
 
 	MaxPages   int
 	MaxAgeDays int
@@ -45,6 +46,7 @@ func Load() (Config, error) {
 		DBUser:     os.Getenv("DB_USER"),
 		DBPassword: os.Getenv("DB_PASSWORD"),
 		DBName:     os.Getenv("DB_NAME"),
+		DBSSLMode:  os.Getenv("DB_SSLMODE"),
 
 		MaxPages:   maxPages,
 		MaxAgeDays: maxAgeDays,
