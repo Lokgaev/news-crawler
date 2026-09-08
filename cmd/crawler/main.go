@@ -6,6 +6,7 @@ import (
 
 	"news-crawler/internal/config"
 	"news-crawler/internal/repository/postgres"
+	"news-crawler/internal/scraper/orient"
 )
 
 func main() {
@@ -24,4 +25,8 @@ func main() {
 
 	log.Println("[POSTGRES] Подключение к базе данных успешно")
 
+	err = orient.Run(ctx, repo)
+	if err != nil {
+		log.Fatal("[ORIENT] ", err)
+	}
 }
