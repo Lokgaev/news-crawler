@@ -179,7 +179,7 @@ func scrapeListPage(
 	}
 
 	articleSelector := fmt.Sprintf(
-		`a[href*="/%s/posts/"]`,
+		`main div[class*="md:col-span-3"] > article > a[href*="/%s/posts/"]`,
 		language,
 	)
 
@@ -226,7 +226,8 @@ func scrapeListPage(
 			articleURL := e.Request.AbsoluteURL(href)
 
 			fmt.Printf(
-				"[ORIENT][%s] Найдена статья: %s\n",
+				"[ORIENT][%s][%s] Найдена статья: %s\n",
+				category,
 				strings.ToUpper(language),
 				articleURL,
 			)
