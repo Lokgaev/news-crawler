@@ -25,7 +25,7 @@ func main() {
 
 	log.Println("[POSTGRES] Подключение к базе данных успешно")
 
-	err = orient.Run(ctx, repo)
+	err = orient.Run(ctx, repo, cfg.MaxPages, cfg.MaxAgeDays)
 	if err != nil {
 		log.Fatal("[ORIENT] ", err)
 	}

@@ -15,98 +15,476 @@ import (
 func Run(
 	ctx context.Context,
 	repo repository.ArticleRepository,
+	maxPages int,
+	maxAgeDays int,
 ) error {
-	listCollector := colly.NewCollector()
+	if maxPages <= 0 {
+		return fmt.Errorf("MAX_PAGES должен быть больше 0")
+	}
 
-	listCollector.OnRequest(func(r *colly.Request) {
-		fmt.Println("[ORIENT] Запрос списка:", r.URL)
-	})
+	if maxAgeDays <= 0 {
+		return fmt.Errorf("MAX_AGE_DAYS должен быть больше 0")
+	}
 
-	listCollector.OnHTML(
-		`a[href*="/ru/posts/"]`,
-		func(e *colly.HTMLElement) {
-			href := e.Attr("href")
+	languages := []string{
+		"ru",
+		"en",
+		"tk",
+	}
 
-			parts := strings.Split(href, "/")
-			externalID := parts[len(parts)-1]
+	categories := []string{
+		"events",
+		"economy",
+		"society",
+		"culture",
+		"business",
+		"sport",
+		"science",
+		"technology",
+		"eco-world",
+		"china",
+		"partners",
+	}
 
-			articleURL := e.Request.AbsoluteURL(href)
-
-			fmt.Println("[ORIENT] Найдена статья:", articleURL)
-			fmt.Println("[ORIENT] ExternalID:", externalID)
-
-			article, err := scrapeArticle(
-				articleURL,
-				externalID,
-			)
-			if err != nil {
-				fmt.Println("[ORIENT] Ошибка парсинга:", err)
-				return
-			}
-
-			err = repo.SaveArticle(ctx, article)
-			if err != nil {
-				fmt.Println("[ORIENT] Ошибка сохранения:", err)
-				return
-			}
-
-			fmt.Println(
-				"[ORIENT] Статья сохранена:",
-				externalID,
-			)
-		},
+	cutoff := time.Now().AddDate(
+		0,
+		0,
+		-maxAgeDays,
 	)
 
-	err := listCollector.Visit("https://orient.tm/ru/news")
-	if err != nil {
-		return fmt.Errorf(
-			"открытие списка Orient: %w",
-			err,
+	// Одна общая map для RU + EN + TK.
+
+	fmt.Printf(
+		"[ORIENT] Парсим максимум %d страниц на язык, новости не старше %d дней\n",
+		maxPages,
+		maxAgeDays,
+	)
+
+	fmt.Println(
+		"[ORIENT] Минимальная дата:",
+		cutoff.Format("2006-01-02"),
+	)
+
+	for _, category := range categories {
+		seen := make(map[string]bool)
+		for _, language := range languages {
+			err := scrapeLanguage(
+				ctx,
+				repo,
+				language,
+				category,
+				maxPages,
+				cutoff,
+				seen,
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"парсинг Orient категории %s, языка %s: %w",
+					category,
+					language,
+					err,
+				)
+			}
+		}
+
+	}
+	return nil
+}
+
+func scrapeLanguage(
+	ctx context.Context,
+	repo repository.ArticleRepository,
+	language string,
+	category string,
+	maxPages int,
+	cutoff time.Time,
+	seen map[string]bool,
+) error {
+
+	for page := 1; page <= maxPages; page++ {
+		fmt.Printf(
+			"[ORIENT][%s] ===== Страница %d =====\n",
+			strings.ToUpper(language),
+			page,
 		)
+
+		newArticles, oldArticleFound, err := scrapeListPage(
+			ctx,
+			repo,
+			language,
+			category,
+			page,
+			seen,
+			cutoff,
+		)
+		if err != nil {
+			return err
+		}
+
+		if newArticles == 0 {
+			fmt.Printf(
+				"[ORIENT][%s] На странице %d нет новых статей. Останавливаюсь.\n",
+				strings.ToUpper(language),
+				page,
+			)
+
+			break
+		}
+
+		if oldArticleFound {
+			fmt.Printf(
+				"[ORIENT][%s] Найдены статьи старше допустимого срока. Дальше не идём.\n",
+				strings.ToUpper(language),
+			)
+
+			break
+		}
 	}
 
 	return nil
 }
 
+func scrapeListPage(
+	ctx context.Context,
+	repo repository.ArticleRepository,
+	language string,
+	category string,
+	page int,
+	seen map[string]bool,
+	cutoff time.Time,
+) (int, bool, error) {
+	listCollector := colly.NewCollector()
+
+	var callbackErr error
+
+	var oldArticleFound bool
+
+	newArticles := 0
+
+	var listURL string
+
+	if page == 1 {
+		listURL = fmt.Sprintf(
+			"https://orient.tm/%s/news/%s",
+			language,
+			category,
+		)
+	} else {
+		listURL = fmt.Sprintf(
+			"https://orient.tm/%s/news/%s?page=%d",
+			language,
+			category,
+			page,
+		)
+	}
+
+	articleSelector := fmt.Sprintf(
+		`a[href*="/%s/posts/"]`,
+		language,
+	)
+
+	listCollector.OnRequest(func(r *colly.Request) {
+		fmt.Printf(
+			"[ORIENT][%s] Запрос списка: %s\n",
+			strings.ToUpper(language),
+			r.URL,
+		)
+	})
+
+	listCollector.OnHTML(
+		articleSelector,
+		func(e *colly.HTMLElement) {
+			if callbackErr != nil {
+				return
+			}
+
+			href := e.Attr("href")
+
+			parts := strings.Split(
+				strings.Trim(href, "/"),
+				"/",
+			)
+
+			if len(parts) == 0 {
+				return
+			}
+
+			externalID := parts[len(parts)-1]
+
+			if externalID == "" {
+				return
+			}
+
+			if seen[externalID] {
+				return
+			}
+
+			seen[externalID] = true
+
+			newArticles++
+
+			articleURL := e.Request.AbsoluteURL(href)
+
+			fmt.Printf(
+				"[ORIENT][%s] Найдена статья: %s\n",
+				strings.ToUpper(language),
+				articleURL,
+			)
+
+			article, isOld, err := scrapeArticle(
+				articleURL,
+				externalID,
+				language,
+				category,
+				cutoff,
+			)
+			if err != nil {
+				fmt.Printf(
+					"[ORIENT][%s] Ошибка статьи %s: %v\n",
+					strings.ToUpper(language),
+					externalID,
+					err,
+				)
+
+				return
+			}
+
+			if isOld {
+				oldArticleFound = true
+
+				fmt.Printf(
+					"[ORIENT][%s] Статья %s старше допустимого срока, пропускаю\n",
+					strings.ToUpper(language),
+					externalID,
+				)
+
+				return
+			}
+
+			err = repo.SaveArticle(ctx, article)
+			if err != nil {
+				callbackErr = err
+				return
+			}
+
+			fmt.Printf(
+				"[ORIENT] Статья сохранена: %s\n",
+				externalID,
+			)
+		},
+	)
+
+	err := listCollector.Visit(listURL)
+	if err != nil {
+		return 0, false, fmt.Errorf(
+			"открытие списка %s: %w",
+			listURL,
+			err,
+		)
+	}
+
+	if callbackErr != nil {
+		return 0, false, callbackErr
+	}
+
+	return newArticles, oldArticleFound, nil
+}
+
 func scrapeArticle(
 	articleURL string,
 	externalID string,
-) (model.Article, error) {
-	articleCollector := colly.NewCollector()
-
+	startLanguage string,
+	category string,
+	cutoff time.Time,
+) (model.Article, bool, error) {
 	article := model.Article{
 		ExternalID: externalID,
 		SourceName: "orient",
 		ScrapedAt:  time.Now(),
-		URLRU:      stringPointer(articleURL),
 		Published:  true,
+		Category:   stringPointer(category),
+	}
+
+	alternateURLs := make(map[string]string)
+
+	alternateURLs[startLanguage] = articleURL
+
+	err := scrapeArticlePage(
+		articleURL,
+		startLanguage,
+		&article,
+		alternateURLs,
+	)
+	if err != nil {
+		return model.Article{}, false, err
+	}
+
+	// Сначала проверяем возраст основной статьи.
+	// Если она старая, нет смысла дополнительно
+	// открывать её EN/TK/RU переводы.
+	if article.PostedAt != nil {
+		if article.PostedAt.Before(cutoff) {
+			return article, true, nil
+		}
+	}
+
+	languages := []string{
+		"ru",
+		"en",
+		"tk",
+	}
+
+	for _, language := range languages {
+		if language == startLanguage {
+			continue
+		}
+
+		translatedURL, ok := alternateURLs[language]
+		if !ok {
+			continue
+		}
+
+		fmt.Printf(
+			"[ORIENT][%s] Найден перевод: %s\n",
+			strings.ToUpper(language),
+			translatedURL,
+		)
+
+		err := scrapeArticlePage(
+			translatedURL,
+			language,
+			&article,
+			nil,
+		)
+		if err != nil {
+			fmt.Printf(
+				"[ORIENT][%s] Перевод пока недоступен: %v\n",
+				strings.ToUpper(language),
+				err,
+			)
+
+			continue
+		}
+	}
+
+	return article, false, nil
+}
+
+func scrapeArticlePage(
+	articleURL string,
+	language string,
+	article *model.Article,
+	alternateURLs map[string]string,
+) error {
+	articleCollector := colly.NewCollector()
+
+	// Проверяем, что язык нам известен.
+	switch language {
+	case "ru", "en", "tk":
+		// Всё нормально.
+
+	default:
+		return fmt.Errorf(
+			"неподдерживаемый язык: %s",
+			language,
+		)
 	}
 
 	var parseErr error
 
+	var title string
+	var fullText string
+
+	var postedAt *time.Time
+	var imgURL *string
+
+	var titleFound bool
+	var textFound bool
+
 	articleCollector.OnRequest(func(r *colly.Request) {
-		fmt.Println("[ORIENT] Открываю статью:", r.URL)
+		fmt.Printf(
+			"[ORIENT][%s] Открываю статью: %s\n",
+			strings.ToUpper(language),
+			r.URL,
+		)
 	})
 
+	// Ищем ссылки на другие языковые версии.
+	// Это делаем только для первой открытой версии статьи.
+	if alternateURLs != nil {
+		articleCollector.OnHTML(
+			`link[rel="alternate"][hreflang]`,
+			func(e *colly.HTMLElement) {
+				hreflang := strings.ToLower(
+					strings.TrimSpace(
+						e.Attr("hreflang"),
+					),
+				)
+
+				href := strings.TrimSpace(
+					e.Attr("href"),
+				)
+
+				if href == "" {
+					return
+				}
+
+				href = e.Request.AbsoluteURL(href)
+
+				switch hreflang {
+				case "ru":
+					alternateURLs["ru"] = href
+
+				case "en":
+					alternateURLs["en"] = href
+
+				case "tk", "tm":
+					alternateURLs["tk"] = href
+
+				case "x-default":
+					if _, exists := alternateURLs["ru"]; !exists {
+						alternateURLs["ru"] = href
+					}
+				}
+			},
+		)
+	}
+
+	// Заголовок.
 	articleCollector.OnHTML(
 		"h1",
 		func(e *colly.HTMLElement) {
-			title := strings.TrimSpace(e.Text)
+			if titleFound {
+				return
+			}
+
+			title = strings.TrimSpace(e.Text)
 
 			if title == "" {
 				return
 			}
 
-			article.TitleRU = &title
+			titleFound = true
 		},
 	)
 
+	// Дата публикации.
 	articleCollector.OnHTML(
 		`meta[property="article:published_time"]`,
 		func(e *colly.HTMLElement) {
-			rawDate := e.Attr("content")
+			if postedAt != nil {
+				return
+			}
 
-			postedAt, err := time.Parse(
+			rawDate := strings.TrimSpace(
+				e.Attr("content"),
+			)
+
+			if rawDate == "" {
+				return
+			}
+
+			parsedTime, err := time.Parse(
 				time.RFC3339Nano,
 				rawDate,
 			)
@@ -116,32 +494,39 @@ func scrapeArticle(
 					rawDate,
 					err,
 				)
+
 				return
 			}
 
-			article.PostedAt = &postedAt
+			postedAt = &parsedTime
 		},
 	)
 
+	// Картинка.
 	articleCollector.OnHTML(
 		`meta[property="og:image"]`,
 		func(e *colly.HTMLElement) {
-			imgURL := strings.TrimSpace(
-				e.Attr("content"),
-			)
-
-			if imgURL == "" {
+			if imgURL != nil {
 				return
 			}
 
-			article.ImgURL = &imgURL
+			value := strings.TrimSpace(
+				e.Attr("content"),
+			)
+
+			if value == "" {
+				return
+			}
+
+			imgURL = &value
 		},
 	)
 
+	// Полный текст статьи.
 	articleCollector.OnHTML(
 		"article",
 		func(e *colly.HTMLElement) {
-			if article.TextRU != nil {
+			if textFound {
 				return
 			}
 
@@ -174,18 +559,18 @@ func scrapeArticle(
 				return
 			}
 
-			fullText := strings.Join(
+			fullText = strings.Join(
 				cleanParagraphs,
 				"\n\n",
 			)
 
-			article.TextRU = &fullText
+			textFound = true
 		},
 	)
 
 	err := articleCollector.Visit(articleURL)
 	if err != nil {
-		return model.Article{}, fmt.Errorf(
+		return fmt.Errorf(
 			"открытие статьи %s: %w",
 			articleURL,
 			err,
@@ -193,24 +578,52 @@ func scrapeArticle(
 	}
 
 	if parseErr != nil {
-		return model.Article{}, parseErr
+		return parseErr
 	}
 
-	if article.TitleRU == nil {
-		return model.Article{}, fmt.Errorf(
+	if !titleFound {
+		return fmt.Errorf(
 			"не найден заголовок статьи %s",
-			externalID,
+			articleURL,
 		)
 	}
 
-	if article.TextRU == nil {
-		return model.Article{}, fmt.Errorf(
+	if !textFound {
+		return fmt.Errorf(
 			"не найден текст статьи %s",
-			externalID,
+			articleURL,
 		)
 	}
 
-	return article, nil
+	// Только после того, как страница успешно распарсилась,
+	// записываем данные в model.Article.
+	switch language {
+	case "ru":
+		article.TitleRU = stringPointer(title)
+		article.TextRU = stringPointer(fullText)
+		article.URLRU = stringPointer(articleURL)
+
+	case "en":
+		article.TitleEN = stringPointer(title)
+		article.TextEN = stringPointer(fullText)
+		article.URLEN = stringPointer(articleURL)
+
+	case "tk":
+		article.TitleTM = stringPointer(title)
+		article.TextTM = stringPointer(fullText)
+		article.URLTM = stringPointer(articleURL)
+	}
+
+	// Дату и картинку достаточно сохранить один раз.
+	if article.PostedAt == nil && postedAt != nil {
+		article.PostedAt = postedAt
+	}
+
+	if article.ImgURL == nil && imgURL != nil {
+		article.ImgURL = imgURL
+	}
+
+	return nil
 }
 
 func stringPointer(value string) *string {
