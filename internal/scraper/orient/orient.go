@@ -153,7 +153,10 @@ func scrapeListPage(
 	seen map[string]bool,
 	cutoff time.Time,
 ) (int, bool, error) {
-	listCollector := colly.NewCollector()
+	listCollector := colly.NewCollector(
+		colly.AllowURLRevisit(),
+	)
+	listCollector.SetRequestTimeout(30 * time.Second)
 
 	var callbackErr error
 
@@ -275,7 +278,11 @@ func scrapeListPage(
 		},
 	)
 
-	err := listCollector.Visit(listURL)
+	err := visitWithRetry(
+		listCollector,
+		listURL,
+		3,
+	)
 	if err != nil {
 		return 0, false, fmt.Errorf(
 			"открытие списка %s: %w",
@@ -377,7 +384,10 @@ func scrapeArticlePage(
 	article *model.Article,
 	alternateURLs map[string]string,
 ) error {
-	articleCollector := colly.NewCollector()
+	articleCollector := colly.NewCollector(
+		colly.AllowURLRevisit(),
+	)
+	articleCollector.SetRequestTimeout(30 * time.Second)
 
 	// Проверяем, что язык нам известен.
 	switch language {
@@ -569,7 +579,11 @@ func scrapeArticlePage(
 		},
 	)
 
-	err := articleCollector.Visit(articleURL)
+	err := visitWithRetry(
+		articleCollector,
+		articleURL,
+		3,
+	)
 	if err != nil {
 		return fmt.Errorf(
 			"открытие статьи %s: %w",
@@ -629,4 +643,37 @@ func scrapeArticlePage(
 
 func stringPointer(value string) *string {
 	return &value
+}
+
+func visitWithRetry(
+	c *colly.Collector,
+	url string,
+	maxAttempts int,
+) error {
+
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+
+		err := c.Visit(url)
+
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+
+		if attempt < maxAttempts {
+			fmt.Printf(
+				"[ORIENT] Ошибка запроса. Повтор %d/%d: %v\n",
+				attempt+1,
+				maxAttempts,
+				err,
+			)
+
+			time.Sleep(2 * time.Second)
+		}
+	}
+
+	return lastErr
 }

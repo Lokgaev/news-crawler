@@ -6,8 +6,9 @@ import (
 
 	"news-crawler/internal/config"
 	"news-crawler/internal/repository/postgres"
+
 	"news-crawler/internal/scraper/orient"
-)
+	/* "news-crawler/internal/scraper/turkmenportal" */)
 
 func main() {
 	ctx := context.Background()
@@ -24,6 +25,12 @@ func main() {
 	defer repo.Close()
 
 	log.Println("[POSTGRES] Подключение к базе данных успешно")
+
+	/* err = turkmenportal.Run(ctx, repo, cfg.MaxAgeDays, cfg.MaxPages)
+	if err != nil {
+		fmt.Println("Ошибка Turkmenportal:", err)
+		return
+	} */
 
 	err = orient.Run(ctx, repo, cfg.MaxPages, cfg.MaxAgeDays)
 	if err != nil {
