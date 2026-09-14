@@ -108,7 +108,7 @@ func scrapeLanguage(
 			page,
 		)
 
-		newArticles, oldArticleFound, err := scrapeListPage(
+		foundArticles, oldArticleFound, err := scrapeListPage(
 			ctx,
 			repo,
 			language,
@@ -121,7 +121,7 @@ func scrapeLanguage(
 			return err
 		}
 
-		if newArticles == 0 {
+		if foundArticles == 0 {
 			fmt.Printf(
 				"[ORIENT][%s] На странице %d нет новых статей. Останавливаюсь.\n",
 				strings.ToUpper(language),
@@ -162,7 +162,7 @@ func scrapeListPage(
 
 	var oldArticleFound bool
 
-	newArticles := 0
+	foundArticles := 0
 
 	var listURL string
 
@@ -218,13 +218,43 @@ func scrapeListPage(
 				return
 			}
 
+			foundArticles++
+
 			if seen[externalID] {
 				return
 			}
 
-			seen[externalID] = true
+			exists, complete, hasCategory, err := repo.GetArticleStatus(
+				ctx,
+				"orient",
+				externalID,
+				category,
+			)
 
-			newArticles++
+			if err != nil {
+				callbackErr = err
+				return
+			}
+
+			if exists && complete && hasCategory {
+				seen[externalID] = true
+
+				fmt.Printf(
+					"[ORIENT][%s] Статья %s уже полностью есть в БД, пропускаю\n",
+					strings.ToUpper(language),
+					externalID,
+				)
+
+				return
+			}
+
+			if exists && !complete {
+				fmt.Printf(
+					"[ORIENT][%s] Статья %s есть в БД, но не все переводы заполнены — проверяю снова\n",
+					strings.ToUpper(language),
+					externalID,
+				)
+			}
 
 			articleURL := e.Request.AbsoluteURL(href)
 
@@ -255,7 +285,7 @@ func scrapeListPage(
 
 			if isOld {
 				oldArticleFound = true
-
+				seen[externalID] = true
 				fmt.Printf(
 					"[ORIENT][%s] Статья %s старше допустимого срока, пропускаю\n",
 					strings.ToUpper(language),
@@ -270,6 +300,8 @@ func scrapeListPage(
 				callbackErr = err
 				return
 			}
+
+			seen[externalID] = true
 
 			fmt.Printf(
 				"[ORIENT] Статья сохранена: %s\n",
@@ -295,7 +327,7 @@ func scrapeListPage(
 		return 0, false, callbackErr
 	}
 
-	return newArticles, oldArticleFound, nil
+	return foundArticles, oldArticleFound, nil
 }
 
 func scrapeArticle(

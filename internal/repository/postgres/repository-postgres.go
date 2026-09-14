@@ -2,8 +2,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -43,6 +46,73 @@ func New(ctx context.Context, cfg config.Config) (*Repository, error) {
 		pool: pool,
 	}, nil
 
+}
+
+func (r *Repository) GetArticleStatus(
+	ctx context.Context,
+	sourceName string,
+	externalID string,
+	category string,
+) (bool, bool, bool, error) {
+
+	const query = `
+		SELECT
+			(
+				a.title_tm IS NOT NULL
+				AND a.text_tm IS NOT NULL
+				AND a.url_tm IS NOT NULL
+
+				AND a.title_ru IS NOT NULL
+				AND a.text_ru IS NOT NULL
+				AND a.url_ru IS NOT NULL
+
+				AND a.title_en IS NOT NULL
+				AND a.text_en IS NOT NULL
+				AND a.url_en IS NOT NULL
+			) AS complete,
+
+			EXISTS (
+				SELECT 1
+				FROM article_categories ac
+				JOIN categories c
+					ON c.id = ac.category_id
+				WHERE ac.article_id = a.id
+					AND c.slug = $3
+			) AS has_category
+
+		FROM articles a
+		WHERE a.source_name = $1
+			AND a.external_id = $2
+	`
+
+	var complete bool
+	var hasCategory bool
+
+	err := r.pool.QueryRow(
+		ctx,
+		query,
+		sourceName,
+		externalID,
+		category,
+	).Scan(
+		&complete,
+		&hasCategory,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, false, false, nil
+		}
+
+		return false, false, false, fmt.Errorf(
+			"проверка статьи %s/%s: %w",
+			sourceName,
+			externalID,
+			err,
+		)
+	}
+
+	return true, complete, hasCategory, nil
 }
 
 func (r *Repository) SaveArticle(
@@ -259,6 +329,370 @@ func (r *Repository) SaveArticle(
 	}
 
 	return nil
+}
+
+func (r *Repository) ListArticles(
+	ctx context.Context,
+	limit int,
+	offset int,
+	source string,
+	category string,
+	language string,
+) ([]model.Article, int, error) {
+
+	const countQuery = `
+	WITH filtered AS (
+		SELECT a.*
+		FROM articles a
+		WHERE a.published = TRUE
+
+			AND (
+				$1 = ''
+				OR a.source_name = $1
+			)
+
+			AND (
+				$2 = ''
+				OR EXISTS (
+					SELECT 1
+					FROM article_categories ac
+					JOIN categories c
+						ON c.id = ac.category_id
+					WHERE ac.article_id = a.id
+						AND c.slug = $2
+				)
+			)
+
+			AND (
+				$3 = ''
+
+				OR (
+					$3 = 'ru'
+					AND a.title_ru IS NOT NULL
+					AND a.text_ru IS NOT NULL
+				)
+
+				OR (
+					$3 = 'en'
+					AND a.title_en IS NOT NULL
+					AND a.text_en IS NOT NULL
+				)
+
+				OR (
+					$3 = 'tm'
+					AND a.title_tm IS NOT NULL
+					AND a.text_tm IS NOT NULL
+				)
+			)
+	),
+
+	deduplicated AS (
+		SELECT
+			f.*,
+
+			ROW_NUMBER() OVER (
+				PARTITION BY
+					f.source_name,
+					COALESCE(
+						f.title_ru,
+						f.title_en,
+						f.title_tm,
+						''
+					),
+					COALESCE(
+						f.text_ru,
+						f.text_en,
+						f.text_tm,
+						''
+					),
+					COALESCE(
+						f.img_url,
+						''
+					)
+
+				ORDER BY
+					(
+						CASE
+							WHEN f.title_ru IS NOT NULL
+								AND f.text_ru IS NOT NULL
+								AND f.url_ru IS NOT NULL
+							THEN 1
+							ELSE 0
+						END
+
+						+
+
+						CASE
+							WHEN f.title_en IS NOT NULL
+								AND f.text_en IS NOT NULL
+								AND f.url_en IS NOT NULL
+							THEN 1
+							ELSE 0
+						END
+
+						+
+
+						CASE
+							WHEN f.title_tm IS NOT NULL
+								AND f.text_tm IS NOT NULL
+								AND f.url_tm IS NOT NULL
+							THEN 1
+							ELSE 0
+						END
+					) DESC,
+
+					f.posted_at DESC NULLS LAST,
+					f.id DESC
+			) AS rn
+
+		FROM filtered f
+	)
+
+	SELECT COUNT(*)
+	FROM deduplicated
+	WHERE rn = 1
+`
+
+	var total int
+
+	err := r.pool.QueryRow(
+		ctx,
+		countQuery,
+		source,
+		category,
+		language,
+	).Scan(&total)
+
+	if err != nil {
+		return nil, 0, fmt.Errorf(
+			"подсчёт статей: %w",
+			err,
+		)
+	}
+
+	const articlesQuery = `
+	WITH filtered AS (
+		SELECT a.*
+		FROM articles a
+		WHERE a.published = TRUE
+
+			AND (
+				$1 = ''
+				OR a.source_name = $1
+			)
+
+			AND (
+				$2 = ''
+				OR EXISTS (
+					SELECT 1
+					FROM article_categories ac
+					JOIN categories c
+						ON c.id = ac.category_id
+					WHERE ac.article_id = a.id
+						AND c.slug = $2
+				)
+			)
+
+			AND (
+				$3 = ''
+
+				OR (
+					$3 = 'ru'
+					AND a.title_ru IS NOT NULL
+					AND a.text_ru IS NOT NULL
+				)
+
+				OR (
+					$3 = 'en'
+					AND a.title_en IS NOT NULL
+					AND a.text_en IS NOT NULL
+				)
+
+				OR (
+					$3 = 'tm'
+					AND a.title_tm IS NOT NULL
+					AND a.text_tm IS NOT NULL
+				)
+			)
+	),
+
+	deduplicated AS (
+		SELECT
+			f.*,
+
+			ROW_NUMBER() OVER (
+				PARTITION BY
+					f.source_name,
+					COALESCE(
+						f.title_ru,
+						f.title_en,
+						f.title_tm,
+						''
+					),
+					COALESCE(
+						f.text_ru,
+						f.text_en,
+						f.text_tm,
+						''
+					),
+					COALESCE(
+						f.img_url,
+						''
+					)
+
+				ORDER BY
+					(
+						CASE
+							WHEN f.title_ru IS NOT NULL
+								AND f.text_ru IS NOT NULL
+								AND f.url_ru IS NOT NULL
+							THEN 1
+							ELSE 0
+						END
+
+						+
+
+						CASE
+							WHEN f.title_en IS NOT NULL
+								AND f.text_en IS NOT NULL
+								AND f.url_en IS NOT NULL
+							THEN 1
+							ELSE 0
+						END
+
+						+
+
+						CASE
+							WHEN f.title_tm IS NOT NULL
+								AND f.text_tm IS NOT NULL
+								AND f.url_tm IS NOT NULL
+							THEN 1
+							ELSE 0
+						END
+					) DESC,
+
+					f.posted_at DESC NULLS LAST,
+					f.id DESC
+			) AS rn
+
+		FROM filtered f
+	)
+
+	SELECT
+		a.id,
+		a.external_id,
+
+		a.title_tm,
+		a.title_ru,
+		a.title_en,
+
+		a.text_tm,
+		a.text_ru,
+		a.text_en,
+
+		a.posted_at,
+		a.scraped_at,
+		a.img_url,
+
+		a.url_tm,
+		a.url_ru,
+		a.url_en,
+
+		a.source_name,
+		a.published,
+
+		(
+			SELECT c.slug
+			FROM article_categories ac
+			JOIN categories c
+				ON c.id = ac.category_id
+			WHERE ac.article_id = a.id
+			ORDER BY c.slug
+			LIMIT 1
+		) AS category
+
+	FROM deduplicated a
+
+	WHERE a.rn = 1
+
+	ORDER BY
+		a.posted_at DESC NULLS LAST,
+		a.id DESC
+
+	LIMIT $4
+	OFFSET $5
+`
+
+	rows, err := r.pool.Query(
+		ctx,
+		articlesQuery,
+		source,
+		category,
+		language,
+		limit,
+		offset,
+	)
+
+	if err != nil {
+		return nil, 0, fmt.Errorf(
+			"получение статей: %w",
+			err,
+		)
+	}
+
+	defer rows.Close()
+
+	articles := make([]model.Article, 0)
+
+	for rows.Next() {
+		var article model.Article
+
+		err := rows.Scan(
+			&article.ID,
+			&article.ExternalID,
+
+			&article.TitleTM,
+			&article.TitleRU,
+			&article.TitleEN,
+
+			&article.TextTM,
+			&article.TextRU,
+			&article.TextEN,
+
+			&article.PostedAt,
+			&article.ScrapedAt,
+			&article.ImgURL,
+
+			&article.URLTM,
+			&article.URLRU,
+			&article.URLEN,
+
+			&article.SourceName,
+			&article.Published,
+			&article.Category,
+		)
+
+		if err != nil {
+			return nil, 0, fmt.Errorf(
+				"чтение статьи из PostgreSQL: %w",
+				err,
+			)
+		}
+
+		articles = append(
+			articles,
+			article,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf(
+			"чтение списка статей: %w",
+			err,
+		)
+	}
+
+	return articles, total, nil
 }
 
 func (r *Repository) Close() {
