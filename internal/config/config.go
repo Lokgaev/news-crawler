@@ -20,12 +20,24 @@ type Config struct {
 
 	MaxPages   int
 	MaxAgeDays int
+	MaxImageMB int64
 }
 
 func Load() (Config, error) {
 	err := godotenv.Load()
 	if err != nil {
 		fmt.Println("[CONFIG] .env файл	не найден, использую системные переменные окружения")
+	}
+
+	maxImageMB, err := strconv.ParseInt(
+		os.Getenv("MAX_IMAGE_MB"),
+		10,
+		64,
+	)
+	if err != nil || maxImageMB <= 0 {
+		return Config{}, fmt.Errorf(
+			"неверный MAX_IMAGE_MB",
+		)
 	}
 
 	maxPages, err := strconv.Atoi(os.Getenv("MAX_PAGES"))
@@ -50,6 +62,7 @@ func Load() (Config, error) {
 
 		MaxPages:   maxPages,
 		MaxAgeDays: maxAgeDays,
+		MaxImageMB: maxImageMB,
 	}
 
 	return cfg, nil

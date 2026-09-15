@@ -139,6 +139,12 @@ func (s *Server) articlesHandler(
 		return
 	}
 
+	/* for i := range articles {
+		articles[i].TextTM = truncateText(articles[i].TextTM, 100)
+		articles[i].TextRU = truncateText(articles[i].TextRU, 100)
+		articles[i].TextEN = truncateText(articles[i].TextEN, 100)
+	} */
+
 	var next *string
 	var previous *string
 
@@ -221,3 +227,19 @@ func writeJSON(
 
 	_ = encoder.Encode(data)
 }
+
+/* func truncateText(text *string, maxLength int) *string {
+	if text == nil {
+		return nil
+	}
+
+	runes := []rune(*text)
+
+	if len(runes) <= maxLength {
+		return text
+	}
+
+	shortText := string(runes[:maxLength-3]) + "..."
+
+	return &shortText
+} */

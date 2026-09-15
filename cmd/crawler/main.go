@@ -53,8 +53,9 @@ func runCrawlers(
 	err := turkmenportal.Run(
 		ctx,
 		repo,
-		cfg.MaxAgeDays,
 		cfg.MaxPages,
+		cfg.MaxAgeDays,
+		cfg.MaxImageMB,
 	)
 
 	if err != nil {
@@ -70,6 +71,7 @@ func runCrawlers(
 		repo,
 		cfg.MaxPages,
 		cfg.MaxAgeDays,
+		cfg.MaxImageMB,
 	)
 
 	if err != nil {
@@ -85,6 +87,7 @@ func runCrawlers(
 		repo,
 		cfg.MaxPages,
 		cfg.MaxAgeDays,
+		cfg.MaxImageMB,
 	)
 
 	if err != nil {

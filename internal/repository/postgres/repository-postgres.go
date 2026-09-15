@@ -586,9 +586,23 @@ func (r *Repository) ListArticles(
 		a.title_ru,
 		a.title_en,
 
-		a.text_tm,
-		a.text_ru,
-		a.text_en,
+		CASE
+			WHEN a.text_tm IS NULL THEN NULL
+			WHEN char_length(a.text_tm) <= 100 THEN a.text_tm
+			ELSE LEFT(a.text_tm, 97) || '...'
+		END AS text_tm,
+
+		CASE
+			WHEN a.text_ru IS NULL THEN NULL
+			WHEN char_length(a.text_ru) <= 100 THEN a.text_ru
+			ELSE LEFT(a.text_ru, 97) || '...'
+		END AS text_ru,
+
+		CASE
+			WHEN a.text_en IS NULL THEN NULL
+			WHEN char_length(a.text_en) <= 100 THEN a.text_en
+			ELSE LEFT(a.text_en, 97) || '...'
+		END AS text_en,
 
 		a.posted_at,
 		a.scraped_at,

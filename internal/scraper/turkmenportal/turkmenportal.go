@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"fmt"
+	"news-crawler/internal/imagecheck"
 	"news-crawler/internal/model"
 	"news-crawler/internal/repository"
 	"strconv"
@@ -18,6 +19,7 @@ func Run(
 	repo repository.ArticleRepository,
 	maxPages int,
 	maxAgeDays int,
+	maxImageMB int64,
 ) error {
 
 	if maxPages <= 0 {
@@ -192,6 +194,12 @@ func Run(
 					}
 				}
 
+				article.ImgURL = imagecheck.FilterURL(
+					ctx,
+					article.ImgURL,
+					maxImageMB,
+				)
+
 				err = repo.SaveArticle(ctx, article)
 				if err != nil {
 					callbackErr = fmt.Errorf(
@@ -295,10 +303,22 @@ func scrapeArticlePage(articleURL string, language string, article *model.Articl
 	}
 
 	if article.Category == nil {
-		c.OnHTML(`nav.ant-breadcrumb a[href^="/news/category/"]`, func(e *colly.HTMLElement) {
+		c.OnHTML(`a[href*="/news/category/"]`, func(e *colly.HTMLElement) {
+			if article.Category != nil {
+				return
+			}
+
 			href := strings.TrimSpace(e.Attr("href"))
 
-			categoryPart := strings.TrimPrefix(href, "/news/category/")
+			const marker = "/news/category/"
+
+			index := strings.Index(href, marker)
+			if index == -1 {
+				return
+			}
+
+			categoryPart := href[index+len(marker):]
+			categoryPart = strings.Trim(categoryPart, "/")
 
 			parts := strings.SplitN(categoryPart, "-", 2)
 			if len(parts) != 2 {
@@ -308,6 +328,11 @@ func scrapeArticlePage(articleURL string, language string, article *model.Articl
 			category := normalizeCategory(parts[1])
 
 			article.Category = stringPointer(category)
+
+			fmt.Println(
+				"[TURKMENPORTAL] Категория:",
+				category,
+			)
 		})
 	}
 
