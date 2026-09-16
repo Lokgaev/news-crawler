@@ -709,6 +709,95 @@ func (r *Repository) ListArticles(
 	return articles, total, nil
 }
 
+func (r *Repository) GetArticleByID(
+	ctx context.Context,
+	id int64,
+) (model.Article, bool, error) {
+	const query = `
+		SELECT
+			a.id,
+			a.external_id,
+
+			a.title_tm,
+			a.title_ru,
+			a.title_en,
+
+			a.text_tm,
+			a.text_ru,
+			a.text_en,
+
+			a.posted_at,
+			a.scraped_at,
+			a.img_url,
+
+			a.url_tm,
+			a.url_ru,
+			a.url_en,
+
+			a.source_name,
+			a.published,
+
+			(
+				SELECT c.slug
+				FROM article_categories ac
+				JOIN categories c
+					ON c.id = ac.category_id
+				WHERE ac.article_id = a.id
+				ORDER BY c.slug
+				LIMIT 1
+			) AS category
+
+		FROM articles a
+		WHERE a.id = $1
+			AND a.published = TRUE
+	`
+
+	var article model.Article
+
+	err := r.pool.QueryRow(
+		ctx,
+		query,
+		id,
+	).Scan(
+		&article.ID,
+		&article.ExternalID,
+
+		&article.TitleTM,
+		&article.TitleRU,
+		&article.TitleEN,
+
+		&article.TextTM,
+		&article.TextRU,
+		&article.TextEN,
+
+		&article.PostedAt,
+		&article.ScrapedAt,
+		&article.ImgURL,
+
+		&article.URLTM,
+		&article.URLRU,
+		&article.URLEN,
+
+		&article.SourceName,
+		&article.Published,
+		&article.Category,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.Article{}, false, nil
+	}
+
+	if err != nil {
+		return model.Article{}, false, fmt.Errorf(
+			"получение статьи %d: %w",
+			id,
+			err,
+		)
+	}
+
+	return article, true, nil
+}
+
 func (r *Repository) Close() {
 	r.pool.Close()
 }

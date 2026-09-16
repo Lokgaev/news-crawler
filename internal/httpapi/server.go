@@ -32,6 +32,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("/health", s.healthHandler)
 	mux.HandleFunc("/articles", s.articlesHandler)
+	mux.HandleFunc("/articles/{id}", s.articleByIDHandler)
 
 	return mux
 }
@@ -139,12 +140,6 @@ func (s *Server) articlesHandler(
 		return
 	}
 
-	/* for i := range articles {
-		articles[i].TextTM = truncateText(articles[i].TextTM, 100)
-		articles[i].TextRU = truncateText(articles[i].TextRU, 100)
-		articles[i].TextEN = truncateText(articles[i].TextEN, 100)
-	} */
-
 	var next *string
 	var previous *string
 
@@ -179,6 +174,64 @@ func (s *Server) articlesHandler(
 		w,
 		http.StatusOK,
 		response,
+	)
+}
+
+func (s *Server) articleByIDHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	id, err := strconv.ParseInt(
+		r.PathValue("id"),
+		10,
+		64,
+	)
+
+	if err != nil || id <= 0 {
+		http.Error(
+			w,
+			"invalid article id",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	article, found, err := s.repo.GetArticleByID(
+		r.Context(),
+		id,
+	)
+
+	if err != nil {
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	if !found {
+		http.Error(
+			w,
+			"article not found",
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	writeJSON(
+		w,
+		http.StatusOK,
+		article,
 	)
 }
 
@@ -227,19 +280,3 @@ func writeJSON(
 
 	_ = encoder.Encode(data)
 }
-
-/* func truncateText(text *string, maxLength int) *string {
-	if text == nil {
-		return nil
-	}
-
-	runes := []rune(*text)
-
-	if len(runes) <= maxLength {
-		return text
-	}
-
-	shortText := string(runes[:maxLength-3]) + "..."
-
-	return &shortText
-} */
