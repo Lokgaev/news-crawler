@@ -55,7 +55,6 @@ func runCrawlers(
 		repo,
 		cfg.MaxPages,
 		cfg.MaxAgeDays,
-		cfg.MaxImageMB,
 	)
 
 	if err != nil {
@@ -71,7 +70,6 @@ func runCrawlers(
 		repo,
 		cfg.MaxPages,
 		cfg.MaxAgeDays,
-		cfg.MaxImageMB,
 	)
 
 	if err != nil {
@@ -87,7 +85,6 @@ func runCrawlers(
 		repo,
 		cfg.MaxPages,
 		cfg.MaxAgeDays,
-		cfg.MaxImageMB,
 	)
 
 	if err != nil {

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"fmt"
-	"news-crawler/internal/imagecheck"
+
 	"news-crawler/internal/model"
 	"news-crawler/internal/repository"
 	"strconv"
@@ -19,7 +19,7 @@ func Run(
 	repo repository.ArticleRepository,
 	maxPages int,
 	maxAgeDays int,
-	maxImageMB int64,
+
 ) error {
 
 	if maxPages <= 0 {
@@ -193,12 +193,6 @@ func Run(
 						)
 					}
 				}
-
-				article.ImgURL = imagecheck.FilterURL(
-					ctx,
-					article.ImgURL,
-					maxImageMB,
-				)
 
 				err = repo.SaveArticle(ctx, article)
 				if err != nil {

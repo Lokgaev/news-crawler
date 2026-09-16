@@ -8,7 +8,6 @@ import (
 
 	"github.com/gocolly/colly/v2"
 
-	"news-crawler/internal/imagecheck"
 	"news-crawler/internal/model"
 	"news-crawler/internal/repository"
 )
@@ -18,12 +17,8 @@ func Run(
 	repo repository.ArticleRepository,
 	maxPages int,
 	maxAgeDays int,
-	maxImageMB int64,
-) error {
 
-	if maxImageMB <= 0 {
-		return fmt.Errorf("MAX_IMAGE_MB должен быть больше 0")
-	}
+) error {
 
 	if maxPages <= 0 {
 		return fmt.Errorf("MAX_PAGES должен быть больше 0")
@@ -83,7 +78,6 @@ func Run(
 				maxPages,
 				cutoff,
 				seen,
-				maxImageMB,
 			)
 			if err != nil {
 				return fmt.Errorf(
@@ -108,7 +102,7 @@ func scrapeLanguage(
 	maxPages int,
 	cutoff time.Time,
 	seen map[string]bool,
-	maxImageMB int64,
+
 ) error {
 
 	for page := 1; page <= maxPages; page++ {
@@ -126,7 +120,6 @@ func scrapeLanguage(
 			page,
 			seen,
 			cutoff,
-			maxImageMB,
 		)
 		if err != nil {
 			return err
@@ -163,7 +156,7 @@ func scrapeListPage(
 	page int,
 	seen map[string]bool,
 	cutoff time.Time,
-	maxImageMB int64,
+
 ) (int, bool, error) {
 	listCollector := colly.NewCollector(
 		colly.AllowURLRevisit(),
@@ -306,12 +299,6 @@ func scrapeListPage(
 
 				return
 			}
-
-			article.ImgURL = imagecheck.FilterURL(
-				ctx,
-				article.ImgURL,
-				maxImageMB,
-			)
 
 			err = repo.SaveArticle(ctx, article)
 			if err != nil {

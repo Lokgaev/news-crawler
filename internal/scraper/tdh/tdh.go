@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"news-crawler/internal/imagecheck"
 	"news-crawler/internal/model"
 	"news-crawler/internal/repository"
 
@@ -19,7 +18,7 @@ func Run(
 	repo repository.ArticleRepository,
 	maxPages int,
 	maxAgeDays int,
-	maxImageMB int64,
+
 ) error {
 
 	if maxPages <= 0 {
@@ -215,12 +214,6 @@ func Run(
 					fmt.Println("[TDH] Не удалось получить EN перевод:", translationErr)
 				}
 			}
-
-			article.ImgURL = imagecheck.FilterURL(
-				ctx,
-				article.ImgURL,
-				maxImageMB,
-			)
 
 			err = repo.SaveArticle(
 				ctx,
