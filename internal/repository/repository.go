@@ -29,4 +29,8 @@ type ArticleRepository interface {
 		category string,
 		language string,
 	) ([]model.Article, int, error)
+
+	ListCategories(
+		ctx context.Context,
+	) ([]string, error)
 }

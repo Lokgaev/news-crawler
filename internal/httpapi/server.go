@@ -33,6 +33,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/health", s.healthHandler)
 	mux.HandleFunc("/articles", s.articlesHandler)
 	mux.HandleFunc("/articles/{id}", s.articleByIDHandler)
+	mux.HandleFunc("/categories", s.categoriesHandler)
 
 	return mux
 }
@@ -174,6 +175,40 @@ func (s *Server) articlesHandler(
 		w,
 		http.StatusOK,
 		response,
+	)
+}
+
+func (s *Server) categoriesHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	categories, err := s.repo.ListCategories(
+		r.Context(),
+	)
+	if err != nil {
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	writeJSON(
+		w,
+		http.StatusOK,
+		map[string][]string{
+			"results": categories,
+		},
 	)
 }
 

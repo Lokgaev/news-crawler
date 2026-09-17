@@ -798,6 +798,58 @@ func (r *Repository) GetArticleByID(
 	return article, true, nil
 }
 
+func (r *Repository) ListCategories(
+	ctx context.Context,
+) ([]string, error) {
+
+	const query = `
+		SELECT slug
+		FROM categories
+		ORDER BY slug
+	`
+
+	rows, err := r.pool.Query(
+		ctx,
+		query,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"получение категорий: %w",
+			err,
+		)
+	}
+
+	defer rows.Close()
+
+	categories := make([]string, 0)
+
+	for rows.Next() {
+		var category string
+
+		err := rows.Scan(&category)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"чтение категории: %w",
+				err,
+			)
+		}
+
+		categories = append(
+			categories,
+			category,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(
+			"чтение списка категорий: %w",
+			err,
+		)
+	}
+
+	return categories, nil
+}
+
 func (r *Repository) Close() {
 	r.pool.Close()
 }
