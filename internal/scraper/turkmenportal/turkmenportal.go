@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"fmt"
+	"net/http"
 
 	"news-crawler/internal/model"
 	"news-crawler/internal/repository"
@@ -13,6 +14,21 @@ import (
 
 	"github.com/gocolly/colly/v2"
 )
+
+func newTurkmenportalCollector() *colly.Collector {
+	c := colly.NewCollector(
+		colly.AllowURLRevisit(),
+	)
+
+	c.SetRequestTimeout(8 * time.Second)
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableKeepAlives = true
+
+	c.WithTransport(transport)
+
+	return c
+}
 
 func Run(
 	ctx context.Context,
@@ -52,10 +68,11 @@ func Run(
 			page,
 		)
 
-		c := colly.NewCollector(
+		/* c := colly.NewCollector(
 			colly.AllowURLRevisit(),
 		)
-		c.SetRequestTimeout(30 * time.Second)
+		c.SetRequestTimeout(8 * time.Second) */
+		c := newTurkmenportalCollector()
 
 		var callbackErr error
 		oldArticleFound := false
@@ -263,11 +280,12 @@ func stringPointer(value string) *string {
 }
 
 func scrapeArticlePage(articleURL string, language string, article *model.Article, alternateURLs map[string]string) error {
-	c := colly.NewCollector(
+	/* c := colly.NewCollector(
 		colly.AllowURLRevisit(),
 	)
 
-	c.SetRequestTimeout(30 * time.Second)
+	c.SetRequestTimeout(8 * time.Second) */
+	c := newTurkmenportalCollector()
 
 	var title string
 	var text string
@@ -377,7 +395,7 @@ func scrapeArticlePage(articleURL string, language string, article *model.Articl
 	err := visitWithRetry(
 		c,
 		articleURL,
-		3,
+		2,
 	)
 	if err != nil {
 		return err
@@ -454,6 +472,8 @@ func visitWithRetry(
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 
+		time.Sleep(300 * time.Millisecond)
+
 		err := c.Visit(url)
 
 		if err == nil {
@@ -470,7 +490,7 @@ func visitWithRetry(
 				err,
 			)
 
-			time.Sleep(2 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 	}
 
