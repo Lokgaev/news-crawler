@@ -287,9 +287,15 @@ func buildPageURL(
 		strconv.Itoa(pageSize),
 	)
 
+	path := r.URL.Path
+
+	if prefix := r.Header.Get("X-Forwarded-Prefix"); prefix != "" {
+		path = prefix + path
+	}
+
 	return fmt.Sprintf(
 		"%s?%s",
-		r.URL.Path,
+		path,
 		query.Encode(),
 	)
 }

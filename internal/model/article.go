@@ -29,5 +29,6 @@ type Article struct {
 
 	Published bool `json:"published"`
 
-	Category *string `json:"category"`
+	Category   *string  `json:"-"`
+	Categories []string `json:"categories"`
 }

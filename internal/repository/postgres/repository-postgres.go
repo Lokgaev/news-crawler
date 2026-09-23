@@ -615,15 +615,14 @@ func (r *Repository) ListArticles(
 		a.source_name,
 		a.published,
 
-		(
-			SELECT c.slug
+		ARRAY(
+        	SELECT c.slug
 			FROM article_categories ac
 			JOIN categories c
-				ON c.id = ac.category_id
+                ON c.id = ac.category_id
 			WHERE ac.article_id = a.id
 			ORDER BY c.slug
-			LIMIT 1
-		) AS category
+	) AS categories
 
 	FROM deduplicated a
 
@@ -683,7 +682,7 @@ func (r *Repository) ListArticles(
 
 			&article.SourceName,
 			&article.Published,
-			&article.Category,
+			&article.Categories,
 		)
 
 		if err != nil {
@@ -737,15 +736,14 @@ func (r *Repository) GetArticleByID(
 			a.source_name,
 			a.published,
 
-			(
+			ARRAY(
 				SELECT c.slug
 				FROM article_categories ac
 				JOIN categories c
-					ON c.id = ac.category_id
+                	ON c.id = ac.category_id
 				WHERE ac.article_id = a.id
 				ORDER BY c.slug
-				LIMIT 1
-			) AS category
+		) AS categories
 
 		FROM articles a
 		WHERE a.id = $1
@@ -780,7 +778,7 @@ func (r *Repository) GetArticleByID(
 
 		&article.SourceName,
 		&article.Published,
-		&article.Category,
+		&article.Categories,
 	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
